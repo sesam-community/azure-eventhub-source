@@ -1,6 +1,4 @@
 FROM python:3.6-slim
-LABEL maintainer="Simen Jorgensen simen.jorgensen@sesam.io"
-
 
 RUN pip install --upgrade pip
 
