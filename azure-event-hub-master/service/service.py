@@ -5,50 +5,64 @@ from ast import literal_eval
 import logging
 import cherrypy
 import os
+from uamqp import types, errors
+
 
 app = Flask(__name__)
-
-address = os.environ.get('address')
+logger = logging.getLogger('service')
+logging.basicConfig(level=logging.ERROR)
 
 # Access tokens for event hub namespace, from Azure portal for namespace
+address = os.environ.get('address')
 user = os.environ.get('user')
 key = os.environ.get('key')
 consumergroup = os.environ.get('consumergroup')
-
-PARTITION = "0"
+partition = os.environ.get('partition')
 
 if not address:
-    logging.error("No event hub address supplied")
+    logger.error("No event hub address supplied")
 
 
 @app.route('/', methods=['GET'])
 def get():
+    logger.info("start of the function get()")
     if request.args.get('since') is None:
-        since = -1
+        sequenceid = "-1"
     else:
-        since = request.args.get('since')
+        sequenceid = int(request.args.get('since'))
 
     client = EventHubClient(address, debug=False, username=user, password=key)
-
-    receiver = client.add_receiver(consumergroup, PARTITION, prefetch=1000, offset=Offset(since), keep_alive=72000)
+    client.clients.clear()
+    receiver = client.add_receiver(consumergroup, partition, prefetch=5000, offset=Offset(sequenceid), keep_alive=72000)
     client.run()
 
     def generate():
-        batched_events = receiver.receive(max_batch_size=100, timeout=500)
-        yield '['
-        index = 0
-        while batched_events:
-            for event_data in batched_events:
-                if index > 0:
-                    yield ','
-                last_sn = event_data.sequence_number
-                data = str(event_data.message)
-                output_entity = literal_eval(data)
-                output_entity.update({"_updated": str(last_sn)})
-                yield json.dumps(output_entity)
-                index = index + 1
-            batched_events = receiver.receive(max_batch_size=100, timeout=500)
-        yield ']'
+        try:
+            batched_events = receiver.receive(max_batch_size=100,timeout=500)
+            index = 0
+            yield '['
+            while batched_events:
+                for event_data in batched_events:
+                    if index > 0:
+                        yield ','
+                    last_sn = event_data.sequence_number
+                    data = str(event_data.message)
+                    output_entity = literal_eval(data)
+                    output_entity.update({"_updated": last_sn})
+                    yield json.dumps(output_entity)
+                    index = index + 1
+                batched_events = receiver.receive(max_batch_size=100,timeout=500)
+            yield ']'
+        except (errors.TokenExpired, errors.AuthenticationException):
+            logger.error("Receiver disconnected due to token error.")
+            receiver.close(exception=None)
+        except (errors.LinkDetach, errors.ConnectionClose):
+            logger.error("Receiver detached.")
+            receiver.close(exception=None)
+        except Exception as e:
+            logger.error("Unexpected error occurred (%r). Shutting down.", e)
+            receiver.close(exception=None)
+
     return Response(generate(), mimetype='application/json')
 
 
