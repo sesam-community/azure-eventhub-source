@@ -6,9 +6,11 @@ To read more about how this work see our [**Getting Started with Sesam**](https:
 Sample system in Sesam Portal:
 ```json
 {
-  "_id": "eventhub-system",
+  "_id": "<system- name>",
   "type": "system:microservice",
+  "connect_timeout": 600,
   "docker": {
+     "cpu_quota": 100,
     "environment": {
     ###FILL INN YOUR EVENT HUB CREDENTIALS###
       "ADDRESS": "$ENV(eventhub-address)",
@@ -17,23 +19,24 @@ Sample system in Sesam Portal:
       "USER": "$ENV(eventhub-usr)"
     },
     "image": "<dockerhub_username>/<repoistory>:<tag>",
+     "memory": 512,
     "port": 5000
   },
   "verify_ssl": true
 }
 ```
-The secrets and evnironment variables are stored in **Datahub** in **Settings** in Sesam Node. 
-
+The secrets and environment variables are stored in **Datahub** --> **Variables**-- in Sesam Node. 
 
 Sample input pipe:
 ```json
 {
-  "_id": "input-pipe",
+  "_id": "<pipe-name>",
   "type": "pipe",
   "source": {
     "type": "json",
-    "system": "eventhub-system",
+    "system": "<source system name>",
     "is_chronological": true,
+    "is_since_comparable": true,
     "supports_since": true,
     "url": "/"
   },
@@ -41,15 +44,23 @@ Sample input pipe:
     "type": "dtl",
     "rules": {
       "default": [
-        ["add", "_id", "_S.entityId"],
         ["copy", "*"],
-        ["add", "rdf:type",
-          ["ni", "input", "pipe"]
+        ["add", "_id",
+          ["string", "_S._updated"]
         ]
       ]
     }
+  },
+  "pump": {
+    "cron_expression": "0 * * * ?"
+  },
+  "compaction": {
+    "sink": true,
+    "keep_versions": 0,
+    "time_threshold_hours": 24,
+    "time_threshold_hours_pump": 720
   }
 }
 ```
 
-Sesam require that all entities has a "_id". To add this property ```["add", "_id", "_S.entityId"]```. The "_S" referes to the the source. 
+
