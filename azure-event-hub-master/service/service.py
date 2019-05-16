@@ -38,7 +38,7 @@ def get():
 
     def generate():
         try:
-            batched_events = receiver.receive(max_batch_size=100,timeout=500)
+            batched_events = receiver.receive(max_batch_size=100,timeout=3000)
             index = 0
             yield '['
             while batched_events:
@@ -51,7 +51,7 @@ def get():
                     output_entity.update({"_updated": last_sn})
                     yield json.dumps(output_entity)
                     index = index + 1
-                batched_events = receiver.receive(max_batch_size=100,timeout=500)
+                batched_events = receiver.receive(max_batch_size=100,timeout=3000)
             yield ']'
         except (errors.TokenExpired, errors.AuthenticationException):
             logger.error("Receiver disconnected due to token error.")
